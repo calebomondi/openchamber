@@ -122,6 +122,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // The webview will show a loading state until OpenCode is ready
   chatViewProvider = new ChatViewProvider(context, context.extensionUri, openCodeManager);
 
+  // Register the chat view provider and its commands early - this ensures the view is available 
+  // to show connection status and receive messages from commands even before OpenCode is fully started. 
+  // The view will handle the "API not ready" state gracefully.
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       ChatViewProvider.viewType,

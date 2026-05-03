@@ -62,7 +62,9 @@ function projectID(directory: string, projects: Project[]) {
 // Bootstrap global state
 // ---------------------------------------------------------------------------
 
-export async function bootstrapGlobal(
+// Loads global state that's independent of the current directory, but is required 
+// for the app to function at all (e.g. list of projects to show in the UI, even if we don't know which one is active yet).
+export async function bootstrapGlobal( 
   sdk: OpencodeClient,
   set: (patch: Partial<GlobalState>) => void,
 ) {
@@ -116,6 +118,8 @@ export async function bootstrapGlobal(
 // Bootstrap per-directory state
 // ---------------------------------------------------------------------------
 
+// Loads state specific to the current directory, which may be slow but is necessary 
+// to show the correct project/agent/command/session state in the UI.
 export async function bootstrapDirectory(input: {
   directory: string
   sdk: OpencodeClient

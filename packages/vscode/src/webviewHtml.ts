@@ -55,7 +55,9 @@ export function getWebviewHtml(options: WebviewHtmlOptions): string {
     extensionVersion = '',
   } = options;
 
+  // The HTML content for the webview, including a loading screen and CSP configuration.
   const scriptPath = vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'assets', 'index.js');
+  // Use webview.asWebviewUri to convert the script path to a URI that can be loaded in the webview, respecting VS Code's security model.
   const scriptUri = webview.asWebviewUri(scriptPath);
   const normalizedDevServerUrl = asCspToken(devServerUrl)?.replace(/\/$/, '') ?? null;
   const devServerOrigin = toOrigin(normalizedDevServerUrl);

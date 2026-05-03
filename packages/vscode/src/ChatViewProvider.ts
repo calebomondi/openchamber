@@ -50,6 +50,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this._webviewDevServerUrl = resolveWebviewDevServerUrl(this._context);
   }
 
+  // This method is called when the webview view is first resolved 
+  // (e.g. when the user opens the chat view)
   public resolveWebviewView(
     webviewView: vscode.WebviewView
   ) {

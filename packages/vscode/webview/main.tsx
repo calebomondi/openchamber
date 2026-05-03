@@ -405,6 +405,7 @@ const extractBodyText = async (input: RequestInfo | URL, init: RequestInit | und
 const isSseApiPath = (pathname: string) => pathname === '/api/event' || pathname === '/api/global/event';
 const isSessionMessageApiPath = (pathname: string) => /^\/api\/session\/[^/]+\/message$/.test(pathname);
 
+// Handle API requests that are meant to be processed locally within the webview
 const handleLocalApiRequest = async (url: URL, init?: RequestInit) => {
   const pathname = url.pathname;
   const normalizedPathname = pathname !== '/' ? pathname.replace(/\/+$/, '') : pathname;
@@ -1011,6 +1012,7 @@ const handleLocalApiRequest = async (url: URL, init?: RequestInit) => {
   return null;
 };
 
+// Intercept fetch calls to handle API requests within the webview and proxy them to the VS Code extension host as needed
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const targetUrl = typeof input === 'string' || input instanceof URL ? normalizeUrl(input) : normalizeUrl((input as Request).url);
@@ -1032,6 +1034,8 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     });
   }
 
+  // Instead of calling the real fetch for API requests, we proxy them to the extension host 
+  // which can perform privileged operations and return results
   if (targetUrl && targetUrl.pathname.startsWith('/api/')) {
     const localResponse = await handleLocalApiRequest(targetUrl, init);
     if (localResponse) {
@@ -1046,7 +1050,10 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const headersFromInit = headersToRecord(init?.headers);
     const headers = { ...headersFromRequest, ...headersFromInit };
 
+    // Special handling for SSE endpoints to keep the connection open and stream data back as it arrives
     if (isSseApiPath(targetUrl.pathname)) {
+      // Start the SSE proxy in the extension host which will establish 
+      // the connection to the actual SSE endpoint and stream data back via messages
       const start = await vscodeStreamPerfMeasure('vscode.webview.sse_start_ms', () => startSseProxy({ path: suffixPath, headers }));
       if (!start.streamId) {
         return new Response(null, { status: start.status || 503, headers: start.headers || {} });
@@ -1066,6 +1073,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
             if (msg.type === 'api:sse:chunk' && typeof msg.chunk === 'string') {
               vscodeStreamPerfCount('vscode.webview.sse_chunk');
               vscodeStreamPerfObserve('vscode.webview.sse_chunk_bytes', msg.chunk.length);
+              // Pushes chunks of data into the stream as they arrive from the extension host
               controller.enqueue(encoder.encode(msg.chunk));
               return;
             }
@@ -1082,7 +1090,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
               void stopSseProxy({ streamId }).catch(() => {});
             }
           };
-
+          // Listen for messages from the extension host containing SSE data and control signals
           window.addEventListener('message', onMessage);
           unsubscribe = () => window.removeEventListener('message', onMessage);
 
@@ -1115,16 +1123,23 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     }
 
     if (method === 'POST' && isSessionMessageApiPath(targetUrl.pathname)) {
+      // Exteract the body as text to support both JSON and non-JSON payloads
       const bodyText = await extractBodyText(input, init, method);
+      // Start the proxy in the extension host which will forward the request to the actual API endpoint and return the response
       const proxied = await proxySessionMessageRequest({ path: suffixPath, headers, bodyText });
+      // Build a response based on the proxied result and return it
       const response = buildProxiedResponse(proxied);
+      // Record the fetch operation for analytics
       recordBootstrapFetch(targetUrl.pathname, response.ok);
       maybeHideLoadingOverlay();
       return response;
     }
 
+    // Extract the body as base64 to support binary payloads for non-session API requests
     const bodyBase64 = await extractBodyBase64(input, init, method);
+    // Start the proxy in the extension host which will forward the request to the actual API endpoint and return the response
     const proxied = await proxyApiRequest({ method, path: suffixPath, headers, bodyBase64 });
+    // Build a response based on the proxied result and return it
     const response = buildProxiedResponse(proxied);
     recordBootstrapFetch(targetUrl.pathname, response.ok);
     maybeHideLoadingOverlay();
