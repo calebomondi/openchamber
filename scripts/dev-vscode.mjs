@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 const extensionPath = path.join(repoRoot, 'packages', 'vscode');
-const useDetachedChildren = process.platform === 'darwin';
+const useDetachedChildren = process.platform === 'darwin' || process.platform === 'linux';
 
 const codeBin = process.env.OPENCHAMBER_VSCODE_BIN || 'code';
 const workspaceArg = process.argv[2] || process.env.OPENCHAMBER_VSCODE_DEV_WORKSPACE || repoRoot;
@@ -158,19 +158,26 @@ if (!ready) {
   console.warn('[dev:vscode] Webview dev server not ready in time, opening extension host anyway');
 }
 
-const host = run(
-  'vscode extension host',
-  codeBin,
-  [
-    '--new-window',
-    '--disable-extensions',
-    '--extensionDevelopmentPath',
-    extensionPath,
-    '--wait',
-    workspacePath,
-  ],
-  { detached: false },
-);
+let host = null;
+if (!process.env.VSCODE_IPC_HOOK_CLI) {
+  host = run(
+    'vscode extension host',
+    codeBin,
+    [
+      '--new-window',
+      '--disable-extensions',
+      '--extensionDevelopmentPath',
+      extensionPath,
+      '--wait',
+      workspacePath,
+    ],
+    { detached: false },
+  );
+
+  host.on('exit', onChildExit('extension host'));
+} else {
+  console.log('[dev:vscode] Detected VS Code remote environment, skipping extension host launch. Use "Developer: Reload Window" to load changes.');
+}
 
 async function shutdown(exitCode = 0) {
   if (shuttingDown) {
@@ -198,7 +205,6 @@ function onChildExit(label) {
 }
 
 dev.on('exit', onChildExit('watchers'));
-host.on('exit', onChildExit('extension host'));
 
 process.on('SIGINT', () => {
   shutdown(130).catch(() => process.exit(130));
